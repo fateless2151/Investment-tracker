@@ -1,0 +1,52 @@
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'libs/**'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ secrets.GCP_REGION }}
+  AR_REPO: ${{ secrets.GCP_ARTIFACT_REPO }}
+  SERVICE: investment-tracker-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        run: |
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${SERVICE}:${GITHUB_SHA::8}"
+          docker build -f apps/api/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${SERVICE}" \
+            --image "${IMAGE}" \
+            --region "${GCP_REGION}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET=JWT_SECRET:latest,FINNHUB_API_KEY=FINNHUB_API_KEY:latest

@@ -1,0 +1,15 @@
+node_modules
+dist
+build
+tmp
+.nx
+.git
+.github
+**/*.spec.ts
+**/*.test.ts
+coverage
+.env
+.env.*
+!.env.example
+apps/web
+README.md

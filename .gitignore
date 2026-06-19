@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build output
+dist/
+build/
+tmp/
+out-tsc/
+
+# nx
+.nx/cache
+.nx/workspace-data
+
+# prisma
+apps/api/prisma/migrations/dev.db*
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor / os
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.swp
+
+# testing
+coverage/
+
+# vite
+.vite/

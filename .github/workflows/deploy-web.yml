@@ -1,0 +1,44 @@
+name: Deploy Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'libs/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build web
+        run: pnpm nx build web --configuration=production
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_SOCKET_URL: ${{ secrets.VITE_SOCKET_URL }}
+
+      - name: Deploy to Vercel
+        run: |
+          npm i -g vercel
+          vercel deploy dist/apps/web \
+            --prod \
+            --token "${{ secrets.VERCEL_TOKEN }}" \
+            --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
