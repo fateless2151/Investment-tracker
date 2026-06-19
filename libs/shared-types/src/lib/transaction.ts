@@ -9,6 +9,8 @@ export interface Transaction {
   quantity: number;
   price: number;
   fees: number;
+  /** Realized gain/loss booked on a SELL; null for other transaction types. */
+  realizedPnl: number | null;
   currency: string;
   executedAt: string;
   createdAt: string;

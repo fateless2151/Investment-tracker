@@ -480,6 +480,7 @@ function TransactionsTable({
               <th>Symbol</th>
               <th className="text-right">Qty</th>
               <th className="text-right">Price</th>
+              <th className="text-right">Realized P&L</th>
             </tr>
           </thead>
           <tbody>
@@ -493,6 +494,21 @@ function TransactionsTable({
                 <td className="text-right">{formatNumber(t.quantity)}</td>
                 <td className="text-right">
                   {formatMoney(t.price, t.currency || currency)}
+                </td>
+                <td className="text-right">
+                  {t.realizedPnl == null ? (
+                    <span className="text-gray-400">—</span>
+                  ) : (
+                    <span
+                      className={
+                        toNumber(t.realizedPnl) >= 0
+                          ? 'text-green-600'
+                          : 'text-red-600'
+                      }
+                    >
+                      {formatMoney(t.realizedPnl, t.currency || currency)}
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

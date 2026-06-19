@@ -59,6 +59,9 @@ model Transaction {
   quantity    Decimal         @db.Decimal(24, 8)
   price       Decimal         @db.Decimal(24, 8)
   fees        Decimal         @default(0) @db.Decimal(24, 8)
+  // Realized gain/loss booked on SELL (proceeds - avg-cost basis, net of fees).
+  // Null for non-sell transactions.
+  realizedPnl Decimal?        @db.Decimal(24, 8)
   currency    String          @default("USD")
   executedAt  DateTime
   createdAt   DateTime        @default(now())

@@ -58,7 +58,11 @@ describe('TransactionsService.create', () => {
     );
     expect(tx.transaction.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ positionId: 'new-pos', type: 'BUY' }),
+        data: expect.objectContaining({
+          positionId: 'new-pos',
+          type: 'BUY',
+          realizedPnl: null,
+        }),
       }),
     );
   });
@@ -92,6 +96,25 @@ describe('TransactionsService.create', () => {
     });
   });
 
+  it('books realized P&L net of fees on a SELL', async () => {
+    const { service, tx } = setup(
+      { id: 'p1' },
+      { id: 'pos1', quantity: 10, avgCostBasis: 100 },
+    );
+
+    await service.create(
+      'u1',
+      dto({ type: 'SELL', quantity: 2, price: 150, fees: 10 }),
+    );
+
+    // 2 * (150 - 100) - 10 = 90
+    expect(tx.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ realizedPnl: 90 }),
+      }),
+    );
+  });
+
   it('rejects selling more than is held', async () => {
     const { service } = setup(
       { id: 'p1' },
@@ -120,7 +143,11 @@ describe('TransactionsService.create', () => {
     expect(tx.position.update).not.toHaveBeenCalled();
     expect(tx.transaction.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ positionId: null, type: 'DIVIDEND' }),
+        data: expect.objectContaining({
+          positionId: null,
+          type: 'DIVIDEND',
+          realizedPnl: null,
+        }),
       }),
     );
   });

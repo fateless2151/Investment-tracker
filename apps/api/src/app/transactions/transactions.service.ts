@@ -44,6 +44,7 @@ export class TransactionsService {
 
     return this.prisma.$transaction(async (tx) => {
       let positionId: string | null = null;
+      let realizedPnl: number | null = null;
 
       if (dto.type === 'BUY' || dto.type === 'SELL') {
         const position = await tx.position.findUnique({
@@ -54,10 +55,13 @@ export class TransactionsService {
             },
           },
         });
-        positionId =
-          dto.type === 'BUY'
-            ? await this.applyBuy(tx, dto, fees, position)
-            : await this.applySell(tx, dto, position);
+        if (dto.type === 'BUY') {
+          positionId = await this.applyBuy(tx, dto, fees, position);
+        } else {
+          const result = await this.applySell(tx, dto, fees, position);
+          positionId = result.positionId;
+          realizedPnl = result.realizedPnl;
+        }
       }
 
       return tx.transaction.create({
@@ -69,6 +73,7 @@ export class TransactionsService {
           quantity: dto.quantity,
           price: dto.price,
           fees,
+          realizedPnl,
           currency: dto.currency,
           executedAt: new Date(dto.executedAt),
         },
@@ -114,8 +119,11 @@ export class TransactionsService {
   private async applySell(
     tx: Prisma.TransactionClient,
     dto: CreateTransactionDto,
-    position: { id: string; quantity: Prisma.Decimal } | null,
-  ): Promise<string> {
+    fees: number,
+    position:
+      | { id: string; quantity: Prisma.Decimal; avgCostBasis: Prisma.Decimal }
+      | null,
+  ): Promise<{ positionId: string; realizedPnl: number }> {
     if (!position) {
       throw new BadRequestException(
         `Cannot sell ${dto.symbol}: no position held`,
@@ -129,10 +137,20 @@ export class TransactionsService {
       );
     }
 
+    // Realized P&L = proceeds - cost of shares sold (at average cost), net of
+    // fees. The average cost of the remaining shares is left unchanged.
+    const avgCost = Number(position.avgCostBasis);
+    const realizedPnl = round2(dto.quantity * (dto.price - avgCost) - fees);
+
     await tx.position.update({
       where: { id: position.id },
       data: { quantity: oldQty - dto.quantity },
     });
-    return position.id;
+    return { positionId: position.id, realizedPnl };
   }
+}
+
+/** Round to 2 decimals, guarding against binary-float artifacts. */
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
