@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import type { Portfolio } from '@investment-tracker/shared-types';
+import type {
+  CreatePortfolioDto,
+  Portfolio,
+} from '@investment-tracker/shared-types';
 import { api } from '../lib/api';
 
 interface PortfolioState {
@@ -7,6 +10,8 @@ interface PortfolioState {
   loading: boolean;
   error: string | null;
   fetchPortfolios: () => Promise<void>;
+  createPortfolio: (input: CreatePortfolioDto) => Promise<Portfolio>;
+  deletePortfolio: (id: string) => Promise<void>;
 }
 
 export const usePortfolioStore = create<PortfolioState>((set) => ({
@@ -21,5 +26,16 @@ export const usePortfolioStore = create<PortfolioState>((set) => ({
     } catch (err) {
       set({ error: (err as Error).message, loading: false });
     }
+  },
+  createPortfolio: async (input) => {
+    const created = await api.post<Portfolio>('/portfolios', input);
+    set((state) => ({ portfolios: [...state.portfolios, created] }));
+    return created;
+  },
+  deletePortfolio: async (id) => {
+    await api.delete(`/portfolios/${id}`);
+    set((state) => ({
+      portfolios: state.portfolios.filter((p) => p.id !== id),
+    }));
   },
 }));

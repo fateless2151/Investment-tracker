@@ -1,13 +1,13 @@
 import { FormEvent, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { AuthResponse } from '@investment-tracker/shared-types';
 import { api } from '../lib/api';
 import { useAuthStore } from '../stores/authStore';
 
-export function Login() {
+export function Register() {
   const navigate = useNavigate();
-  const location = useLocation() as { state?: { from?: { pathname?: string } } };
   const setAuth = useAuthStore((s) => s.setAuth);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -18,12 +18,13 @@ export function Login() {
     setError(null);
     setSubmitting(true);
     try {
-      const res = await api.post<AuthResponse>('/auth/login', {
+      const res = await api.post<AuthResponse>('/auth/register', {
+        name: name || undefined,
         email,
         password,
       });
       setAuth(res.accessToken, res.user);
-      navigate(location.state?.from?.pathname ?? '/', { replace: true });
+      navigate('/', { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -33,7 +34,14 @@ export function Login() {
 
   return (
     <form onSubmit={onSubmit} className="mx-auto max-w-sm space-y-4">
-      <h2 className="text-lg font-medium">Sign in</h2>
+      <h2 className="text-lg font-medium">Create account</h2>
+      <input
+        className="w-full rounded border px-3 py-2"
+        type="text"
+        placeholder="Name (optional)"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
       <input
         className="w-full rounded border px-3 py-2"
         type="email"
@@ -45,9 +53,10 @@ export function Login() {
       <input
         className="w-full rounded border px-3 py-2"
         type="password"
-        placeholder="Password"
+        placeholder="Password (min 8 characters)"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
+        minLength={8}
         required
       />
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -56,12 +65,12 @@ export function Login() {
         disabled={submitting}
         className="w-full rounded bg-blue-600 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
       >
-        {submitting ? 'Signing in…' : 'Sign in'}
+        {submitting ? 'Creating…' : 'Create account'}
       </button>
       <p className="text-center text-sm text-gray-500">
-        No account?{' '}
-        <Link to="/register" className="text-blue-600 hover:underline">
-          Create one
+        Already have an account?{' '}
+        <Link to="/login" className="text-blue-600 hover:underline">
+          Sign in
         </Link>
       </p>
     </form>

@@ -13,10 +13,30 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
 
+  if (res.status === 401) {
+    // Token missing/expired — drop it so the guard sends the user to /login.
+    useAuthStore.getState().logout();
+  }
   if (!res.ok) {
-    throw new Error(`API ${res.status}: ${await res.text()}`);
+    throw new Error(await extractError(res));
+  }
+  if (res.status === 204) {
+    return undefined as T;
   }
   return res.json() as Promise<T>;
+}
+
+/** Pull a human-readable message out of a NestJS error response. */
+async function extractError(res: Response): Promise<string> {
+  try {
+    const body = await res.json();
+    const message = body?.message;
+    if (Array.isArray(message)) return message.join(', ');
+    if (typeof message === 'string') return message;
+  } catch {
+    // fall through to status text
+  }
+  return `Request failed (${res.status})`;
 }
 
 export const api = {
