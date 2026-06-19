@@ -1,4 +1,5 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import type { AssetType } from '@investment-tracker/shared-types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PricesService } from './prices.service';
 
@@ -11,7 +12,8 @@ export class PricesController {
   getQuote(
     @Param('symbol') symbol: string,
     @Query('currency') currency = 'USD',
+    @Query('assetType') assetType?: AssetType,
   ) {
-    return this.prices.getQuote(symbol, currency);
+    return this.prices.getQuote(symbol, currency, assetType);
   }
 }

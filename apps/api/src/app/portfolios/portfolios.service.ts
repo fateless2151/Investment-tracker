@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  AssetType,
   CreatePortfolioDto,
   PortfolioValuation,
 } from '@investment-tracker/shared-types';
@@ -56,11 +57,20 @@ export class PortfoliosService {
 
     const { positions } = portfolio;
 
-    const symbols = [...new Set(positions.map((p) => p.symbol))];
+    // One quote per distinct symbol, carrying its asset type so crypto routes
+    // to CoinGecko and equities to Finnhub.
+    const assetTypeBySymbol = new Map<string, AssetType>();
+    for (const pos of positions) {
+      assetTypeBySymbol.set(pos.symbol, pos.assetType);
+    }
     const priceBySymbol = new Map<string, number>();
     await Promise.all(
-      symbols.map(async (symbol) => {
-        const quote = await this.prices.getQuote(symbol, portfolio.baseCurrency);
+      [...assetTypeBySymbol].map(async ([symbol, assetType]) => {
+        const quote = await this.prices.getQuote(
+          symbol,
+          portfolio.baseCurrency,
+          assetType,
+        );
         priceBySymbol.set(symbol, quote.price);
       }),
     );

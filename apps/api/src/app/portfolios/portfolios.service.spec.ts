@@ -5,6 +5,7 @@ import type { PricesService } from '../prices/prices.service';
 
 interface TestPosition {
   symbol: string;
+  assetType: string;
   quantity: number;
   avgCostBasis: number;
 }
@@ -42,8 +43,8 @@ describe('PortfoliosService.valuation', () => {
         id: 'p1',
         baseCurrency: 'USD',
         positions: [
-          { symbol: 'AAPL', quantity: 10, avgCostBasis: 100 },
-          { symbol: 'BTC', quantity: 2, avgCostBasis: 20000 },
+          { symbol: 'AAPL', assetType: 'STOCK', quantity: 10, avgCostBasis: 100 },
+          { symbol: 'BTC', assetType: 'CRYPTO', quantity: 2, avgCostBasis: 20000 },
         ],
       },
       { AAPL: 150, BTC: 25000 },
@@ -66,8 +67,8 @@ describe('PortfoliosService.valuation', () => {
         id: 'p1',
         baseCurrency: 'EUR',
         positions: [
-          { symbol: 'AAPL', quantity: 1, avgCostBasis: 10 },
-          { symbol: 'MSFT', quantity: 1, avgCostBasis: 10 },
+          { symbol: 'AAPL', assetType: 'STOCK', quantity: 1, avgCostBasis: 10 },
+          { symbol: 'MSFT', assetType: 'STOCK', quantity: 1, avgCostBasis: 10 },
         ],
       },
       { AAPL: 12, MSFT: 8 },
@@ -76,7 +77,7 @@ describe('PortfoliosService.valuation', () => {
     await service.valuation('u1', 'p1');
 
     expect(prices.getQuote).toHaveBeenCalledTimes(2);
-    expect(prices.getQuote).toHaveBeenCalledWith('AAPL', 'EUR');
+    expect(prices.getQuote).toHaveBeenCalledWith('AAPL', 'EUR', 'STOCK');
   });
 
   it('returns zeros for an empty portfolio without fetching prices', async () => {
