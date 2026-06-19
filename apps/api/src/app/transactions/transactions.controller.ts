@@ -1,7 +1,15 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import type { CreateTransactionDto } from '@investment-tracker/shared-types';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TransactionsService } from './transactions.service';
+import { CreateTransactionDto } from './dto/create-transaction.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('transactions')
@@ -14,7 +22,10 @@ export class TransactionsController {
   }
 
   @Post()
-  create(@Body() dto: CreateTransactionDto) {
-    return this.transactions.create(dto);
+  create(
+    @Req() req: { user: { id: string } },
+    @Body() dto: CreateTransactionDto,
+  ) {
+    return this.transactions.create(req.user.id, dto);
   }
 }
