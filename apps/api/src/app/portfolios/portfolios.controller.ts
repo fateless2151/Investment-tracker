@@ -34,6 +34,11 @@ export class PortfoliosController {
     return this.portfolios.valuation(req.user.id, id);
   }
 
+  @Get(':id/history')
+  history(@Req() req: AuthedRequest, @Param('id') id: string) {
+    return this.portfolios.history(req.user.id, id);
+  }
+
   @Post()
   create(@Req() req: AuthedRequest, @Body() dto: CreatePortfolioDto) {
     return this.portfolios.create(req.user.id, dto);

@@ -10,6 +10,7 @@ import { Link, useParams } from 'react-router-dom';
 import type {
   AssetType,
   Portfolio,
+  PortfolioHistory,
   PortfolioValuation,
   Position,
   Transaction,
@@ -19,6 +20,7 @@ import { api } from '../lib/api';
 import { formatMoney, formatNumber, formatPct, toNumber } from '../lib/format';
 import { usePriceStore } from '../stores/priceStore';
 import { AllocationChart } from '../components/charts/AllocationChart';
+import { PnLChart } from '../components/charts/PnLChart';
 
 const ASSET_TYPES: AssetType[] = ['STOCK', 'CRYPTO', 'ETF', 'CASH'];
 const TRANSACTION_TYPES: TransactionType[] = [
@@ -34,6 +36,7 @@ export function PortfolioDetail() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [valuation, setValuation] = useState<PortfolioValuation | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [history, setHistory] = useState<PortfolioHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,16 +47,18 @@ export function PortfolioDetail() {
     setLoading(true);
     setError(null);
     try {
-      const [p, v, txns] = await Promise.all([
+      const [p, v, txns, hist] = await Promise.all([
         api.get<Portfolio>(`/portfolios/${id}`),
         api
           .get<PortfolioValuation>(`/portfolios/${id}/valuation`)
           .catch(() => null),
         api.get<Transaction[]>(`/transactions/portfolio/${id}`),
+        api.get<PortfolioHistory>(`/portfolios/${id}/history`).catch(() => null),
       ]);
       setPortfolio(p);
       setValuation(v);
       setTransactions(txns);
+      setHistory(hist);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -108,6 +113,22 @@ export function PortfolioDetail() {
       </div>
 
       <ValuationSummary valuation={valuation} currency={currency} />
+
+      <section className="rounded-lg border bg-white p-4">
+        <h3 className="mb-2 font-medium">Cost basis over time</h3>
+        {history && history.points.length > 0 ? (
+          <PnLChart
+            data={history.points.map((pt) => ({
+              date: pt.date,
+              value: toNumber(pt.costBasis),
+            }))}
+          />
+        ) : (
+          <p className="text-sm text-gray-500">
+            No transaction history yet — record a trade to build the series.
+          </p>
+        )}
+      </section>
 
       <section className="grid gap-6 md:grid-cols-2">
         <div className="rounded-lg border bg-white p-4">

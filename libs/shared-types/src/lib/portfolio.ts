@@ -24,3 +24,16 @@ export interface PortfolioValuation {
   currency: string;
   asOf: string;
 }
+
+/** A single day in a portfolio's reconstructed history. */
+export interface PortfolioHistoryPoint {
+  date: string; // YYYY-MM-DD
+  costBasis: number; // cost of open positions at end of day
+  realizedPnl: number; // cumulative realized P&L through that day
+}
+
+export interface PortfolioHistory {
+  portfolioId: string;
+  currency: string;
+  points: PortfolioHistoryPoint[];
+}

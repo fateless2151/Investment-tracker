@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type {
   AssetType,
   CreatePortfolioDto,
+  PortfolioHistory,
   PortfolioValuation,
 } from '@investment-tracker/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -96,6 +97,80 @@ export class PortfoliosService {
       unrealizedPnlPct: round2(unrealizedPnlPct),
       currency: portfolio.baseCurrency,
       asOf: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Reconstruct a daily time series by replaying the transaction ledger.
+   *
+   * We don't store historical market prices, so this is derived purely from
+   * trades: it tracks the cost basis of open positions (using the same
+   * weighted-average logic as recording) and the cumulative realized P&L (read
+   * from the persisted `realizedPnl` on sells) as of the end of each day a
+   * transaction occurred. Market value over time would require a historical
+   * price feed and is intentionally out of scope here.
+   */
+  async history(userId: string, id: string): Promise<PortfolioHistory> {
+    const portfolio = await this.prisma.portfolio.findFirst({
+      where: { id, userId },
+      select: { id: true, baseCurrency: true },
+    });
+    if (!portfolio) {
+      throw new NotFoundException('Portfolio not found');
+    }
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: { portfolioId: id },
+      orderBy: { executedAt: 'asc' },
+    });
+
+    const holdings = new Map<string, { qty: number; avg: number }>();
+    let cumulativeRealized = 0;
+    const byDay = new Map<string, { costBasis: number; realizedPnl: number }>();
+
+    for (const t of transactions) {
+      const qty = Number(t.quantity);
+      const price = Number(t.price);
+      const fees = Number(t.fees);
+
+      if (t.type === 'BUY') {
+        const held = holdings.get(t.symbol);
+        const addedCost = qty * price + fees;
+        if (held) {
+          const newQty = held.qty + qty;
+          held.avg = newQty > 0 ? (held.qty * held.avg + addedCost) / newQty : 0;
+          held.qty = newQty;
+        } else {
+          holdings.set(t.symbol, { qty, avg: qty > 0 ? addedCost / qty : price });
+        }
+      } else if (t.type === 'SELL') {
+        const held = holdings.get(t.symbol);
+        if (held) {
+          held.qty = Math.max(0, held.qty - qty);
+        }
+        cumulativeRealized += t.realizedPnl != null ? Number(t.realizedPnl) : 0;
+      }
+
+      const costBasis = [...holdings.values()].reduce(
+        (sum, h) => sum + h.qty * h.avg,
+        0,
+      );
+      // Last write for a given day wins → end-of-day snapshot.
+      const day = t.executedAt.toISOString().slice(0, 10);
+      byDay.set(day, {
+        costBasis: round2(costBasis),
+        realizedPnl: round2(cumulativeRealized),
+      });
+    }
+
+    const points = [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, snapshot]) => ({ date, ...snapshot }));
+
+    return {
+      portfolioId: portfolio.id,
+      currency: portfolio.baseCurrency,
+      points,
     };
   }
 }
