@@ -4,6 +4,7 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
@@ -14,37 +15,58 @@ import {
   PriceEvents,
   type PriceUpdate,
 } from '@investment-tracker/shared-types';
-import { PricesService } from '../prices/prices.service';
+import { PriceFeedService } from './price-feed.service';
 
 @WebSocketGateway({
   namespace: PRICE_NAMESPACE,
   cors: { origin: process.env.WEB_ORIGIN?.split(',') ?? '*' },
 })
 export class PricesGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(PricesGateway.name);
+
+  /** Symbols each client is subscribed to, so disconnects decrement correctly. */
+  private readonly clientSymbols = new Map<string, Set<string>>();
 
   @WebSocketServer()
   server!: Server;
 
-  constructor(private readonly prices: PricesService) {}
+  constructor(private readonly feed: PriceFeedService) {}
+
+  afterInit(server: Server) {
+    // Hand the server to the feed so it can broadcast ticks.
+    this.feed.setServer(server);
+  }
 
   handleConnection(client: Socket) {
+    this.clientSymbols.set(client.id, new Set());
     this.logger.log(`Client connected: ${client.id}`);
   }
 
   handleDisconnect(client: Socket) {
+    // Socket.io auto-leaves rooms on disconnect; mirror that in the feed's
+    // reference counts so the poller stops for symbols nobody is watching.
+    const symbols = this.clientSymbols.get(client.id);
+    symbols?.forEach((symbol) => this.feed.removeSubscriber(symbol));
+    this.clientSymbols.delete(client.id);
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  /** Client subscribes to a symbol → joins a room keyed by symbol. */
+  /** Client subscribes to a symbol → joins its room and starts the feed. */
   @SubscribeMessage(PriceEvents.Subscribe)
   onSubscribe(
     @ConnectedSocket() client: Socket,
     @MessageBody() symbol: string,
   ) {
-    client.join(symbol.toUpperCase());
+    const key = symbol.toUpperCase();
+    const symbols = this.clientSymbols.get(client.id);
+    if (symbols?.has(key)) {
+      return; // already subscribed; don't double-count
+    }
+    symbols?.add(key);
+    client.join(key);
+    this.feed.addSubscriber(key);
   }
 
   @SubscribeMessage(PriceEvents.Unsubscribe)
@@ -52,7 +74,14 @@ export class PricesGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() symbol: string,
   ) {
-    client.leave(symbol.toUpperCase());
+    const key = symbol.toUpperCase();
+    const symbols = this.clientSymbols.get(client.id);
+    if (!symbols?.has(key)) {
+      return;
+    }
+    symbols.delete(key);
+    client.leave(key);
+    this.feed.removeSubscriber(key);
   }
 
   /** Broadcast a price tick to everyone subscribed to that symbol. */
