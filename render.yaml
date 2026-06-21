@@ -23,9 +23,9 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 1d
-      # Comma-separated allowed browser origins — set to the Vercel URL
+      # Comma-separated allowed browser origins (public URL — safe to commit)
       - key: WEB_ORIGIN
-        sync: false
+        value: https://investment-tracker-phi-ten.vercel.app
       # Optional market-data providers
       - key: FINNHUB_API_KEY
         sync: false
