@@ -7,13 +7,30 @@ import type {
 } from '@investment-tracker/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { PricesService } from '../prices/prices.service';
+import { FxService } from '../fx/fx.service';
 
 @Injectable()
 export class PortfoliosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly prices: PricesService,
+    private readonly fx: FxService,
   ) {}
+
+  /** Resolve a rate from each distinct currency to the base currency. */
+  private async ratesToBase(
+    currencies: string[],
+    base: string,
+  ): Promise<Map<string, number>> {
+    const distinct = [...new Set(currencies)];
+    const rates = new Map<string, number>();
+    await Promise.all(
+      distinct.map(async (ccy) => {
+        rates.set(ccy, await this.fx.getRate(ccy, base));
+      }),
+    );
+    return rates;
+  }
 
   findAll(userId: string) {
     return this.prisma.portfolio.findMany({ where: { userId } });
@@ -57,32 +74,46 @@ export class PortfoliosService {
     }
 
     const { positions } = portfolio;
+    const base = portfolio.baseCurrency;
 
-    // One quote per distinct symbol, carrying its asset type so crypto routes
-    // to CoinGecko and equities to Finnhub.
-    const assetTypeBySymbol = new Map<string, AssetType>();
+    // Quote each distinct symbol in its own currency, carrying the asset type so
+    // crypto routes to CoinGecko and equities to Finnhub.
+    const metaBySymbol = new Map<
+      string,
+      { assetType: AssetType; currency: string }
+    >();
     for (const pos of positions) {
-      assetTypeBySymbol.set(pos.symbol, pos.assetType);
+      metaBySymbol.set(pos.symbol, {
+        assetType: pos.assetType,
+        currency: pos.currency,
+      });
     }
     const priceBySymbol = new Map<string, number>();
     await Promise.all(
-      [...assetTypeBySymbol].map(async ([symbol, assetType]) => {
+      [...metaBySymbol].map(async ([symbol, meta]) => {
         const quote = await this.prices.getQuote(
           symbol,
-          portfolio.baseCurrency,
-          assetType,
+          meta.currency,
+          meta.assetType,
         );
         priceBySymbol.set(symbol, quote.price);
       }),
+    );
+
+    // Convert every position from its own currency into the base currency.
+    const rateByCurrency = await this.ratesToBase(
+      positions.map((p) => p.currency),
+      base,
     );
 
     let marketValue = 0;
     let costBasis = 0;
     for (const pos of positions) {
       const quantity = Number(pos.quantity);
+      const rate = rateByCurrency.get(pos.currency) ?? 1;
       const price = priceBySymbol.get(pos.symbol) ?? 0;
-      marketValue += quantity * price;
-      costBasis += quantity * Number(pos.avgCostBasis);
+      marketValue += quantity * price * rate;
+      costBasis += quantity * Number(pos.avgCostBasis) * rate;
     }
 
     const unrealizedPnl = marketValue - costBasis;
@@ -123,8 +154,20 @@ export class PortfoliosService {
       where: { portfolioId: id },
       orderBy: { executedAt: 'asc' },
     });
+    const base = portfolio.baseCurrency;
 
-    const holdings = new Map<string, { qty: number; avg: number }>();
+    // Convert into the base currency with current rates. We don't store
+    // historical FX, so earlier points use today's rate — a documented
+    // approximation (single-currency portfolios are unaffected).
+    const rateByCurrency = await this.ratesToBase(
+      transactions.map((t) => t.currency),
+      base,
+    );
+
+    const holdings = new Map<
+      string,
+      { qty: number; avg: number; currency: string }
+    >();
     let cumulativeRealized = 0;
     const byDay = new Map<string, { costBasis: number; realizedPnl: number }>();
 
@@ -132,6 +175,7 @@ export class PortfoliosService {
       const qty = Number(t.quantity);
       const price = Number(t.price);
       const fees = Number(t.fees);
+      const rate = rateByCurrency.get(t.currency) ?? 1;
 
       if (t.type === 'BUY') {
         const held = holdings.get(t.symbol);
@@ -141,18 +185,23 @@ export class PortfoliosService {
           held.avg = newQty > 0 ? (held.qty * held.avg + addedCost) / newQty : 0;
           held.qty = newQty;
         } else {
-          holdings.set(t.symbol, { qty, avg: qty > 0 ? addedCost / qty : price });
+          holdings.set(t.symbol, {
+            qty,
+            avg: qty > 0 ? addedCost / qty : price,
+            currency: t.currency,
+          });
         }
       } else if (t.type === 'SELL') {
         const held = holdings.get(t.symbol);
         if (held) {
           held.qty = Math.max(0, held.qty - qty);
         }
-        cumulativeRealized += t.realizedPnl != null ? Number(t.realizedPnl) : 0;
+        cumulativeRealized +=
+          (t.realizedPnl != null ? Number(t.realizedPnl) : 0) * rate;
       }
 
       const costBasis = [...holdings.values()].reduce(
-        (sum, h) => sum + h.qty * h.avg,
+        (sum, h) => sum + h.qty * h.avg * (rateByCurrency.get(h.currency) ?? 1),
         0,
       );
       // Last write for a given day wins → end-of-day snapshot.

@@ -2,12 +2,23 @@ import { NotFoundException } from '@nestjs/common';
 import { PortfoliosService } from './portfolios.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { PricesService } from '../prices/prices.service';
+import type { FxService } from '../fx/fx.service';
 
 interface TestPosition {
   symbol: string;
   assetType: string;
   quantity: number;
   avgCostBasis: number;
+  currency?: string;
+}
+
+// FX rates keyed "FROM:TO"; anything not listed (and same-currency) is 1.
+function makeFx(rates: Record<string, number> = {}) {
+  return {
+    getRate: jest.fn(async (from: string, to: string) =>
+      from === to ? 1 : (rates[`${from}:${to}`] ?? 1),
+    ),
+  };
 }
 
 function makeService(
@@ -15,6 +26,7 @@ function makeService(
     | { id: string; baseCurrency: string; positions: TestPosition[] }
     | null,
   priceBySymbol: Record<string, number>,
+  fxRates: Record<string, number> = {},
 ) {
   const prisma = {
     portfolio: { findFirst: jest.fn(async () => portfolio) },
@@ -29,11 +41,13 @@ function makeService(
       asOf: new Date().toISOString(),
     })),
   };
+  const fx = makeFx(fxRates);
   const service = new PortfoliosService(
     prisma as unknown as PrismaService,
     prices as unknown as PricesService,
+    fx as unknown as FxService,
   );
-  return { service, prisma, prices };
+  return { service, prisma, prices, fx };
 }
 
 describe('PortfoliosService.valuation', () => {
@@ -61,14 +75,14 @@ describe('PortfoliosService.valuation', () => {
     expect(v.portfolioId).toBe('p1');
   });
 
-  it('fetches each distinct symbol once, in the base currency', async () => {
+  it('fetches each distinct symbol once, in its own currency', async () => {
     const { service, prices } = makeService(
       {
         id: 'p1',
         baseCurrency: 'EUR',
         positions: [
-          { symbol: 'AAPL', assetType: 'STOCK', quantity: 1, avgCostBasis: 10 },
-          { symbol: 'MSFT', assetType: 'STOCK', quantity: 1, avgCostBasis: 10 },
+          { symbol: 'AAPL', assetType: 'STOCK', quantity: 1, avgCostBasis: 10, currency: 'EUR' },
+          { symbol: 'MSFT', assetType: 'STOCK', quantity: 1, avgCostBasis: 10, currency: 'EUR' },
         ],
       },
       { AAPL: 12, MSFT: 8 },
@@ -78,6 +92,29 @@ describe('PortfoliosService.valuation', () => {
 
     expect(prices.getQuote).toHaveBeenCalledTimes(2);
     expect(prices.getQuote).toHaveBeenCalledWith('AAPL', 'EUR', 'STOCK');
+  });
+
+  it('converts a foreign-currency position into the base currency', async () => {
+    const { service, fx } = makeService(
+      {
+        id: 'p1',
+        baseCurrency: 'USD',
+        positions: [
+          { symbol: 'SAP', assetType: 'STOCK', quantity: 10, avgCostBasis: 100, currency: 'EUR' },
+        ],
+      },
+      { SAP: 150 },
+      { 'EUR:USD': 1.1 },
+    );
+
+    const v = await service.valuation('u1', 'p1');
+
+    // market = 10*150*1.1 = 1650 ; cost = 10*100*1.1 = 1100
+    expect(v.marketValue).toBe(1650);
+    expect(v.costBasis).toBe(1100);
+    expect(v.unrealizedPnl).toBe(550);
+    expect(v.unrealizedPnlPct).toBeCloseTo(50, 5);
+    expect(fx.getRate).toHaveBeenCalledWith('EUR', 'USD');
   });
 
   it('returns zeros for an empty portfolio without fetching prices', async () => {
@@ -115,11 +152,13 @@ interface TestTransaction {
   fees: number;
   realizedPnl: number | null;
   executedAt: Date;
+  currency?: string;
 }
 
 function makeHistoryService(
   portfolio: { id: string; baseCurrency: string } | null,
   transactions: TestTransaction[],
+  fxRates: Record<string, number> = {},
 ) {
   const prisma = {
     portfolio: { findFirst: jest.fn(async () => portfolio) },
@@ -128,6 +167,7 @@ function makeHistoryService(
   const service = new PortfoliosService(
     prisma as unknown as PrismaService,
     {} as unknown as PricesService,
+    makeFx(fxRates) as unknown as FxService,
   );
   return { service, prisma };
 }
@@ -217,5 +257,31 @@ describe('PortfoliosService.history', () => {
     await expect(service.history('u1', 'missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('converts foreign-currency trades into the base currency', async () => {
+    const { service } = makeHistoryService(
+      { id: 'p1', baseCurrency: 'USD' },
+      [
+        {
+          type: 'BUY',
+          symbol: 'SAP',
+          quantity: 10,
+          price: 100,
+          fees: 0,
+          realizedPnl: null,
+          currency: 'EUR',
+          executedAt: new Date('2026-01-01T10:00:00.000Z'),
+        },
+      ],
+      { 'EUR:USD': 1.2 },
+    );
+
+    const history = await service.history('u1', 'p1');
+
+    // cost basis 10*100 EUR = 1000 EUR -> 1200 USD
+    expect(history.points).toEqual([
+      { date: '2026-01-01', costBasis: 1200, realizedPnl: 0 },
+    ]);
   });
 });
