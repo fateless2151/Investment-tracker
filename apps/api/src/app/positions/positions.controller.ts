@@ -5,11 +5,14 @@ import {
   Get,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import type { CreatePositionDto } from '@investment-tracker/shared-types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PositionsService } from './positions.service';
+
+type AuthedRequest = { user: { id: string } };
 
 @UseGuards(JwtAuthGuard)
 @Controller('portfolios/:portfolioId/positions')
@@ -23,14 +26,19 @@ export class PositionsController {
 
   @Post()
   create(
+    @Req() req: AuthedRequest,
     @Param('portfolioId') portfolioId: string,
     @Body() dto: CreatePositionDto,
   ) {
-    return this.positions.create(portfolioId, dto);
+    return this.positions.create(req.user.id, portfolioId, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.positions.remove(id);
+  remove(
+    @Req() req: AuthedRequest,
+    @Param('portfolioId') portfolioId: string,
+    @Param('id') id: string,
+  ) {
+    return this.positions.remove(req.user.id, portfolioId, id);
   }
 }
