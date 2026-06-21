@@ -1,0 +1,33 @@
+# Render blueprint for the NestJS API (Docker).
+# Postgres (Neon) and Redis (Upstash) are external — set their URLs in the
+# Render dashboard (sync:false vars below). See DEPLOYMENT.md.
+services:
+  - type: web
+    name: investment-tracker-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Neon pooled connection string (include ?sslmode=require)
+      - key: DATABASE_URL
+        sync: false
+      # Upstash Redis URL (rediss://… with TLS)
+      - key: REDIS_URL
+        sync: false
+      # Generated once by Render; rotate by clearing it
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      # Comma-separated allowed browser origins — set to the Vercel URL
+      - key: WEB_ORIGIN
+        sync: false
+      # Optional market-data providers
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: COINGECKO_API_KEY
+        sync: false

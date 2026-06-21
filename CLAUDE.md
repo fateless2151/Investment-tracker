@@ -75,11 +75,17 @@ Modules are organized per domain: `auth`, `portfolios`, `positions`, `transactio
 
 ## Deployment
 
-| Layer    | Service              | Trigger                  |
-|----------|----------------------|--------------------------|
-| Frontend | Vercel               | Push to `main`           |
-| Backend  | GCP Cloud Run        | GitHub Actions → Docker  |
-| Database | GCP Cloud SQL        | —                        |
-| Cache    | GCP Memorystore      | —                        |
+Live stack (the "fastest to live" path — see `DEPLOYMENT.md` for the full runbook):
 
-Docker config lives at `apps/api/Dockerfile`. GitHub Actions workflows live in `.github/workflows/`.
+| Layer    | Service              | Trigger                       |
+|----------|----------------------|-------------------------------|
+| Frontend | Vercel               | Push to `main` (Vercel GitHub) |
+| Backend  | Render (Docker)      | Push to `main` (`render.yaml`) |
+| Database | Neon (Postgres)      | —                             |
+| Cache    | Upstash (Redis)      | —                             |
+
+- API container: `apps/api/Dockerfile` (multi-stage; runs `prisma migrate deploy` on boot). Validated locally with `docker build -f apps/api/Dockerfile .`.
+- Web build: `vercel.json` (Nx build + SPA rewrites).
+- CI: `.github/workflows/ci.yml` runs `nx affected` lint/typecheck/test/build on PRs and `main`.
+- Migrations: never run `prisma migrate dev` against the production DB — only `migrate deploy` (the Dockerfile does this automatically).
+- The original design targeted GCP (Cloud Run + Cloud SQL + Memorystore); those deploy workflows were removed in favor of the simpler stack but remain in git history.
