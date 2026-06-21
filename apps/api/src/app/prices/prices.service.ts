@@ -54,7 +54,26 @@ export class PricesService {
       return JSON.parse(cached) as PriceQuote;
     }
 
-    const quote = await this.fetchFromProvider(symbol, currency, assetType);
+    let quote: PriceQuote;
+    try {
+      quote = await this.fetchFromProvider(symbol, currency, assetType);
+    } catch (err) {
+      // A provider outage/rate-limit must never 500 the caller (valuation,
+      // history, the /prices endpoint). Degrade to a zero-price stub; don't
+      // cache it, so the next call retries.
+      this.logger.warn(
+        `Quote fetch for ${symbol} failed: ${(err as Error).message}; returning stub`,
+      );
+      return {
+        symbol: symbol.toUpperCase(),
+        price: 0,
+        currency,
+        change: 0,
+        changePct: 0,
+        asOf: new Date().toISOString(),
+      };
+    }
+
     await this.redis.set(key, JSON.stringify(quote), CACHE_TTL_SECONDS);
     return quote;
   }

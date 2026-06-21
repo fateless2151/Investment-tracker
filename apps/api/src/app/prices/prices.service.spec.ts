@@ -97,6 +97,16 @@ describe('PricesService', () => {
     expect(mockedAxios.get).toHaveBeenCalledTimes(1);
   });
 
+  it('returns a stub instead of throwing when the provider errors', async () => {
+    // CoinGecko rate-limits/blocks keyless cloud IPs; the caller must not 500.
+    mockedAxios.get.mockRejectedValue(new Error('429 Too Many Requests'));
+    const service = new PricesService(makeRedis());
+
+    const quote = await service.getQuote('BTC', 'USD');
+
+    expect(quote).toMatchObject({ symbol: 'BTC', price: 0, currency: 'USD' });
+  });
+
   it('picks up symbol overrides from COINGECKO_ID_MAP', async () => {
     process.env.COINGECKO_ID_MAP = JSON.stringify({ pepe: 'pepe' });
     mockedAxios.get.mockResolvedValue({
