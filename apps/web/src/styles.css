@@ -3,10 +3,25 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light dark;
+  /* App is a light-only design; force light form controls so inputs don't
+     pick up the OS dark theme (grey-on-grey, unreadable text). */
+  color-scheme: light;
 }
 
 body {
   margin: 0;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Ensure form controls always render readable: white background, dark text. */
+input,
+select,
+textarea {
+  background-color: #ffffff;
+  color: #111827; /* gray-900 */
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af; /* gray-400 */
 }
