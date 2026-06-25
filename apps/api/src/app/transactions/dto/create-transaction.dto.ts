@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Matches,
   Min,
 } from 'class-validator';
 import { AssetType, TransactionType } from '@prisma/client';
@@ -36,7 +37,9 @@ export class CreateTransactionDto implements ICreateTransactionDto {
   @Min(0)
   fees?: number;
 
-  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message: 'currency must be a 3-letter ISO code (e.g. USD)',
+  })
   currency!: string;
 
   @IsISO8601()

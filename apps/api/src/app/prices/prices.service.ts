@@ -99,6 +99,14 @@ export class PricesService {
     return this.fetchFromFinnhub(upper, currency);
   }
 
+  /**
+   * NOTE: Finnhub's quote endpoint returns the price in the instrument's own
+   * listing currency and ignores the requested currency. We therefore assume a
+   * position's stored `currency` matches its listing currency (enforced as a
+   * 3-letter code on input) and label the quote accordingly; FX conversion to
+   * the portfolio base happens later in valuation. Cross-listing mismatches are
+   * out of scope.
+   */
   private async fetchFromFinnhub(
     symbol: string,
     currency: string,

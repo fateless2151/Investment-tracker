@@ -8,9 +8,9 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import type { CreatePositionDto } from '@investment-tracker/shared-types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PositionsService } from './positions.service';
+import { CreatePositionDto } from './dto/create-position.dto';
 
 type AuthedRequest = { user: { id: string } };
 
