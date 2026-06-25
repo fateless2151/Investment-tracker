@@ -21,6 +21,10 @@ export interface PortfolioValuation {
   costBasis: number;
   unrealizedPnl: number;
   unrealizedPnlPct: number;
+  /** Total cash across balances, converted to the base currency. */
+  cash: number;
+  /** marketValue + cash, in the base currency. */
+  totalValue: number;
   currency: string;
   asOf: string;
 }

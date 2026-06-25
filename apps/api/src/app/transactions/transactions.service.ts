@@ -64,6 +64,8 @@ export class TransactionsService {
         }
       }
 
+      await this.applyCash(tx, dto, fees);
+
       return tx.transaction.create({
         data: {
           portfolioId: dto.portfolioId,
@@ -78,6 +80,39 @@ export class TransactionsService {
           executedAt: new Date(dto.executedAt),
         },
       });
+    });
+  }
+
+  /**
+   * Adjust the portfolio's cash balance (per transaction currency) for the
+   * cash flow this transaction implies:
+   *   - BUY / WITHDRAWAL  → cash out  (gross + fees)
+   *   - SELL / DEPOSIT / DIVIDEND → cash in (gross - fees)
+   * Buying without a prior deposit yields a negative balance — that's correct
+   * accounting (cash owed), and totalValue stays right (positions + cash).
+   */
+  private async applyCash(
+    tx: Prisma.TransactionClient,
+    dto: CreateTransactionDto,
+    fees: number,
+  ): Promise<void> {
+    const gross = dto.quantity * dto.price;
+    const outflow = dto.type === 'BUY' || dto.type === 'WITHDRAWAL';
+    const delta = outflow ? -(gross + fees) : gross - fees;
+
+    await tx.cashBalance.upsert({
+      where: {
+        portfolioId_currency: {
+          portfolioId: dto.portfolioId,
+          currency: dto.currency,
+        },
+      },
+      create: {
+        portfolioId: dto.portfolioId,
+        currency: dto.currency,
+        amount: delta,
+      },
+      update: { amount: { increment: delta } },
     });
   }
 

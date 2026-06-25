@@ -18,17 +18,30 @@ model User {
 }
 
 model Portfolio {
-  id           String        @id @default(uuid())
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId       String
-  name         String
-  baseCurrency String        @default("USD")
-  positions    Position[]
-  transactions Transaction[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id            String        @id @default(uuid())
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  name          String
+  baseCurrency  String        @default("USD")
+  positions     Position[]
+  transactions  Transaction[]
+  cashBalances  CashBalance[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@index([userId])
+}
+
+model CashBalance {
+  id          String    @id @default(uuid())
+  portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  portfolioId String
+  currency    String
+  amount      Decimal   @default(0) @db.Decimal(24, 8)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([portfolioId, currency])
+  @@index([portfolioId])
 }
 
 model Position {

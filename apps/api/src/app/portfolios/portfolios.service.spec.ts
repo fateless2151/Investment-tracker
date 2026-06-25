@@ -21,15 +21,26 @@ function makeFx(rates: Record<string, number> = {}) {
   };
 }
 
+interface TestCash {
+  currency: string;
+  amount: number;
+}
+
 function makeService(
   portfolio:
-    | { id: string; baseCurrency: string; positions: TestPosition[] }
+    | {
+        id: string;
+        baseCurrency: string;
+        positions: TestPosition[];
+        cashBalances?: TestCash[];
+      }
     | null,
   priceBySymbol: Record<string, number>,
   fxRates: Record<string, number> = {},
 ) {
+  const withCash = portfolio ? { cashBalances: [], ...portfolio } : null;
   const prisma = {
-    portfolio: { findFirst: jest.fn(async () => portfolio) },
+    portfolio: { findFirst: jest.fn(async () => withCash) },
   };
   const prices = {
     getQuote: jest.fn(async (symbol: string, currency: string) => ({
@@ -73,6 +84,34 @@ describe('PortfoliosService.valuation', () => {
     expect(v.unrealizedPnlPct).toBeCloseTo(25.61, 2);
     expect(v.currency).toBe('USD');
     expect(v.portfolioId).toBe('p1');
+    // no cash → totalValue equals marketValue
+    expect(v.cash).toBe(0);
+    expect(v.totalValue).toBe(51500);
+  });
+
+  it('adds FX-converted cash into total value', async () => {
+    const { service } = makeService(
+      {
+        id: 'p1',
+        baseCurrency: 'USD',
+        positions: [
+          { symbol: 'AAPL', assetType: 'STOCK', quantity: 10, avgCostBasis: 100, currency: 'USD' },
+        ],
+        cashBalances: [
+          { currency: 'USD', amount: 500 },
+          { currency: 'EUR', amount: 100 }, // 100 EUR * 1.1 = 110 USD
+        ],
+      },
+      { AAPL: 150 },
+      { 'EUR:USD': 1.1 },
+    );
+
+    const v = await service.valuation('u1', 'p1');
+
+    // market = 1500 ; cash = 500 + 110 = 610 ; total = 2110
+    expect(v.marketValue).toBe(1500);
+    expect(v.cash).toBe(610);
+    expect(v.totalValue).toBe(2110);
   });
 
   it('fetches each distinct symbol once, in its own currency', async () => {

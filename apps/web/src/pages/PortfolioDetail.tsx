@@ -202,13 +202,14 @@ function ValuationSummary({
   }
   const gain = toNumber(valuation.unrealizedPnl) >= 0;
   return (
-    <section className="grid gap-4 sm:grid-cols-3">
+    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <Card label="Total value">
+        {formatMoney(valuation.totalValue, currency)}
+      </Card>
       <Card label="Market value">
         {formatMoney(valuation.marketValue, currency)}
       </Card>
-      <Card label="Cost basis">
-        {formatMoney(valuation.costBasis, currency)}
-      </Card>
+      <Card label="Cash">{formatMoney(valuation.cash, currency)}</Card>
       <Card label="Unrealized P&L">
         <span className={gain ? 'text-green-600' : 'text-red-600'}>
           {formatMoney(valuation.unrealizedPnl, currency)} (

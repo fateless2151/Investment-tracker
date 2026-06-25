@@ -59,21 +59,19 @@ export class PortfoliosService {
    * For each position: marketValue += quantity * currentPrice and
    * costBasis += quantity * avgCostBasis. Unrealized P&L is the difference.
    * Quotes are fetched once per distinct symbol (PricesService caches them in
-   * Redis), in the portfolio's base currency.
-   *
-   * NOTE: positions held in a currency other than the portfolio's base
-   * currency are summed as-is — FX conversion is a TODO.
+   * Redis), in each position's currency, then converted to the base currency.
+   * Cash balances are added in too: totalValue = marketValue + cash.
    */
   async valuation(userId: string, id: string): Promise<PortfolioValuation> {
     const portfolio = await this.prisma.portfolio.findFirst({
       where: { id, userId },
-      include: { positions: true },
+      include: { positions: true, cashBalances: true },
     });
     if (!portfolio) {
       throw new NotFoundException('Portfolio not found');
     }
 
-    const { positions } = portfolio;
+    const { positions, cashBalances } = portfolio;
     const base = portfolio.baseCurrency;
 
     // Quote each distinct symbol in its own currency, carrying the asset type so
@@ -100,9 +98,12 @@ export class PortfoliosService {
       }),
     );
 
-    // Convert every position from its own currency into the base currency.
+    // Convert positions and cash from their own currency into the base currency.
     const rateByCurrency = await this.ratesToBase(
-      positions.map((p) => p.currency),
+      [
+        ...positions.map((p) => p.currency),
+        ...cashBalances.map((c) => c.currency),
+      ],
       base,
     );
 
@@ -116,6 +117,11 @@ export class PortfoliosService {
       costBasis += quantity * Number(pos.avgCostBasis) * rate;
     }
 
+    let cash = 0;
+    for (const cb of cashBalances) {
+      cash += Number(cb.amount) * (rateByCurrency.get(cb.currency) ?? 1);
+    }
+
     const unrealizedPnl = marketValue - costBasis;
     const unrealizedPnlPct =
       costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0;
@@ -126,6 +132,8 @@ export class PortfoliosService {
       costBasis: round2(costBasis),
       unrealizedPnl: round2(unrealizedPnl),
       unrealizedPnlPct: round2(unrealizedPnlPct),
+      cash: round2(cash),
+      totalValue: round2(marketValue + cash),
       currency: portfolio.baseCurrency,
       asOf: new Date().toISOString(),
     };

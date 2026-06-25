@@ -22,6 +22,9 @@ function setup(portfolio: { id: string } | null, position: ExistingPosition) {
         ...data,
       })),
     },
+    cashBalance: {
+      upsert: jest.fn(async () => ({ id: 'cash1' })),
+    },
   };
   const prisma = {
     portfolio: { findFirst: jest.fn(async () => portfolio) },
@@ -157,6 +160,51 @@ describe('TransactionsService.create', () => {
 
     await expect(service.create('u1', dto({}))).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+
+  it('debits cash on a BUY (gross + fees out)', async () => {
+    const { service, tx } = setup({ id: 'p1' }, null);
+
+    await service.create('u1', dto({ type: 'BUY', quantity: 10, price: 100, fees: 5 }));
+
+    // -(10*100 + 5) = -1005
+    expect(tx.cashBalance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ currency: 'USD', amount: -1005 }),
+        update: { amount: { increment: -1005 } },
+      }),
+    );
+  });
+
+  it('credits cash on a DEPOSIT (gross - fees in)', async () => {
+    const { service, tx } = setup({ id: 'p1' }, null);
+
+    await service.create(
+      'u1',
+      dto({ type: 'DEPOSIT', symbol: 'CASH', quantity: 1000, price: 1, fees: 0 }),
+    );
+
+    expect(tx.cashBalance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ amount: 1000 }),
+        update: { amount: { increment: 1000 } },
+      }),
+    );
+  });
+
+  it('debits cash on a WITHDRAWAL', async () => {
+    const { service, tx } = setup({ id: 'p1' }, null);
+
+    await service.create(
+      'u1',
+      dto({ type: 'WITHDRAWAL', symbol: 'CASH', quantity: 200, price: 1, fees: 0 }),
+    );
+
+    expect(tx.cashBalance.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { amount: { increment: -200 } },
+      }),
     );
   });
 });
