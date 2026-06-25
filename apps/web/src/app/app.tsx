@@ -1,6 +1,7 @@
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { RequireAuth } from '../components/RequireAuth';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Dashboard } from '../pages/Dashboard';
 import { PortfolioDetail } from '../pages/PortfolioDetail';
 import { Login } from '../pages/Login';
@@ -40,6 +41,7 @@ export function App() {
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <Header />
       <main className="mx-auto max-w-5xl p-6">
+        <ErrorBoundary>
         <Routes>
           <Route
             path="/"
@@ -61,6 +63,7 @@ export function App() {
           <Route path="/register" element={<Register />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </main>
     </div>
   );
